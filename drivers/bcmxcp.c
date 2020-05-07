@@ -1318,6 +1318,17 @@ void init_system_test_capabilities(void)
 	}
 }
 
+void upsdrv_initups(void)
+{
+	/* Get vars from ups.conf */
+	if (getval("shutdown_delay") != NULL)
+		bcmxcp_status.shutdowndelay = atoi(getval("shutdown_delay"));
+	else
+		bcmxcp_status.shutdowndelay = 120;
+
+	upssubdrv_initups();
+}
+
 void upsdrv_initinfo(void)
 {
 	unsigned char answer[PW_ANSWER_MAX_SIZE];
@@ -1334,12 +1345,6 @@ void upsdrv_initinfo(void)
 
 	/* Init BCM/XCP alarm descriptions */
 	init_alarm_map();
-
-	/* Get vars from ups.conf */
-	if (getval("shutdown_delay") != NULL)
-		bcmxcp_status.shutdowndelay = atoi(getval("shutdown_delay"));
-	else
-		bcmxcp_status.shutdowndelay = 120;
 
 	/* Get information on UPS from UPS ID block */
 	res = command_read_sequence(PW_ID_BLOCK_REQ, answer);
