@@ -166,7 +166,7 @@ int get_answer(unsigned char *data, unsigned char command)
 	while ( (!endblock) && ((XCP_USB_TIMEOUT - ellapsed_time)  > 0) ) {
 
 		/* Get (more) data if needed */
-		if (need_data > 0) {
+		if (need_data > bytes_read) {
 			res = usb_interrupt_read(upsdev, 0x81, (char *) buf + bytes_read,
 				128,
 				(XCP_USB_TIMEOUT - ellapsed_time));
@@ -193,11 +193,10 @@ int get_answer(unsigned char *data, unsigned char command)
 			}
 			/* Else, we got some input bytes */
 			bytes_read += res;
-			need_data -= res;
 			upsdebug_hex(1, "get_answer", buf, bytes_read);
 		}
 
-		if (need_data > 0) /* We need more data */
+		if (need_data > bytes_read) /* We need more data */
 		    continue;
 
 		/* Now validate XCP frame */
@@ -221,10 +220,9 @@ int get_answer(unsigned char *data, unsigned char command)
 		/* Check data length byte (remove the header length) */
 		length = my_buf[2];
 		upsdebugx(3, "get_answer: data length = %d", length);
-		if (bytes_read - (length + PW_HEADER_SIZE) < 0) {
-			if (need_data < 0) --need_data; /* count zerro byte too */
-			need_data += length + 1; /* packet lenght + checksum */
-			upsdebugx(2, "get_answer: need to read %d more data", need_data);
+		need_data = PW_HEADER_SIZE + length;
+		if (need_data > bytes_read) {
+			upsdebugx(2, "get_answer: need to read %d more data", need_data - bytes_read);
 			continue;
 		}
 		/* Check if Length conforms to XCP (121 for normal, 140 for Test mode) */
@@ -268,12 +266,13 @@ int get_answer(unsigned char *data, unsigned char command)
 		memcpy(data+end_length, my_buf + 4, length);
 		/* increment pointers to process the next sequence */
 		end_length += length;
-		tail = bytes_read - (length + PW_HEADER_SIZE);
+		tail = bytes_read - need_data;
 		if (tail > 0)
 		    my_buf = memmove(&buf[0], my_buf + length + PW_HEADER_SIZE, tail);
 		else if (tail == 0)
 		    my_buf = &buf[0];
 		bytes_read = tail;
+		need_data = PW_HEADER_SIZE;
 	}
 
 	upsdebug_hex (5, "get_answer", data, end_length);
