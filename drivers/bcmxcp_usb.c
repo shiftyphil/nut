@@ -133,7 +133,7 @@ void send_write_command(unsigned char *command, int command_length)
 /* get the answer of a command from the ups. And check that the answer is for this command */
 int get_answer(unsigned char *data, unsigned char command)
 {
-	unsigned char buf[PW_CMD_BUFSIZE], *my_buf = buf;
+	unsigned char buf[PW_CMD_BUFSIZE], *tmp_buf;
 	int length, end_length, res, endblock, bytes_read, ellapsed_time, need_data;
 	int tail;
 	unsigned char block_number, expected_block, sequence, seq_num;
@@ -201,16 +201,21 @@ int get_answer(unsigned char *data, unsigned char command)
 
 		/* Now validate XCP frame */
 		/* Check header */
-		if ( my_buf[0] != PW_COMMAND_START_BYTE ) {
-			upsdebugx(2, "get_answer: wrong header 0xab vs %02x", my_buf[0]);
+		if ( buf[0] != PW_COMMAND_START_BYTE ) {
+			upsdebugx(2, "get_answer: wrong header 0xab vs %02x", buf[0]);
 			/* Sometime we read something wrong. bad cables? bad ports? */
-			my_buf = memchr(my_buf, PW_COMMAND_START_BYTE, bytes_read);
-			if (!my_buf)
-			    return -1;
+			tmp_buf = memchr(buf, PW_COMMAND_START_BYTE, bytes_read);
+			if (!tmp_buf) {
+				nutusb_comm_fail("get_answer: can't find start byte!");
+				return -1;
+			}
+			bytes_read -= tmp_buf - buf;
+			memmove(&buf[0], tmp_buf, bytes_read);
+			continue;
 		}
 
 		/* Read block number byte */
-		block_number = my_buf[1];
+		block_number = buf[1];
 		upsdebugx(1, "get_answer: block_number = %x", block_number);
 		if (block_number != expected_block) {
 			nutusb_comm_fail("get_answer: block number %x - expected %x", block_number, expected_block);
@@ -218,7 +223,7 @@ int get_answer(unsigned char *data, unsigned char command)
 		}
 
 		/* Check data length byte (remove the header length) */
-		length = my_buf[2];
+		length = buf[2];
 		upsdebugx(3, "get_answer: data length = %d", length);
 		need_data = PW_HEADER_SIZE + length;
 		if (need_data > bytes_read) {
@@ -233,7 +238,7 @@ int get_answer(unsigned char *data, unsigned char command)
 		}
 
 		/* Test the Sequence # */
-		sequence = my_buf[3];
+		sequence = buf[3];
 		if ((sequence & PW_SEQ_MASK) != seq_num) {
 			nutusb_comm_fail("get_answer: not the right sequence received %x!!!\n", (sequence & PW_SEQ_MASK));
 			return -1;
@@ -243,7 +248,7 @@ int get_answer(unsigned char *data, unsigned char command)
 		}
 
 		/* Validate checksum */
-		if (!checksum_test(my_buf)) {
+		if (!checksum_test(buf)) {
 			nutusb_comm_fail("get_answer: checksum error! ");
 			return -1;
 		}
@@ -263,14 +268,12 @@ int get_answer(unsigned char *data, unsigned char command)
 		}
 
 		/* copy the current valid XCP frame back */
-		memcpy(data+end_length, my_buf + 4, length);
+		memcpy(data+end_length, buf + 4, length);
 		/* increment pointers to process the next sequence */
 		end_length += length;
 		tail = bytes_read - need_data;
 		if (tail > 0)
-		    my_buf = memmove(&buf[0], my_buf + length + PW_HEADER_SIZE, tail);
-		else if (tail == 0)
-		    my_buf = &buf[0];
+			memmove(&buf[0], buf + length + PW_HEADER_SIZE, tail);
 		bytes_read = tail;
 		need_data = PW_HEADER_SIZE;
 	}
