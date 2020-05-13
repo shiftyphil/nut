@@ -136,7 +136,7 @@ int get_answer(unsigned char *data, unsigned char command)
 	unsigned char buf[PW_CMD_BUFSIZE], *my_buf = buf;
 	int length, end_length, res, endblock, bytes_read, ellapsed_time, need_data;
 	int tail;
-	unsigned char block_number, sequence, seq_num;
+	unsigned char block_number, expected_block, sequence, seq_num;
 	struct timeval start_time, now;
 
 	if (upsdev == NULL)
@@ -151,6 +151,13 @@ int get_answer(unsigned char *data, unsigned char command)
 	seq_num = 1;       /* current theoric sequence */
 
 	upsdebugx(1, "entering get_answer(%x)", command);
+
+	if (command <= 0x45)
+		expected_block = command - 0x30;
+	else if (command == 0xA0 || command == 0xA1)
+		expected_block = 0x01;
+	else
+		expected_block = 0x09;
 
 	/* Store current time */
 	gettimeofday(&start_time, NULL);
@@ -206,6 +213,10 @@ int get_answer(unsigned char *data, unsigned char command)
 		/* Read block number byte */
 		block_number = my_buf[1];
 		upsdebugx(1, "get_answer: block_number = %x", block_number);
+		if (block_number != expected_block) {
+			nutusb_comm_fail("get_answer: block number %x - expected %x", block_number, expected_block);
+			return -1;
+		}
 
 		/* Check data length byte (remove the header length) */
 		length = my_buf[2];
