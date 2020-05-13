@@ -278,6 +278,9 @@ int get_answer(unsigned char *data, unsigned char command)
 		need_data = PW_HEADER_SIZE;
 	}
 
+	if (!endblock)
+		return -1;
+
 	upsdebug_hex (5, "get_answer", data, end_length);
 	return end_length;
 }
