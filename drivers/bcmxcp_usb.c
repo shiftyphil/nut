@@ -93,6 +93,7 @@ static usb_device_id_t pw_usb_device_table[] = {
 usb_dev_handle *upsdev = NULL;
 extern int exit_flag;
 static unsigned int comm_failures = 0;
+static unsigned int comm_failure_state = 0;
 
 /* Functions implementations */
 void send_read_command(unsigned char command)
@@ -179,10 +180,8 @@ int get_answer(unsigned char *data, unsigned char command)
 			/* Check libusb return value */
 			if (res < 0)
 			{
-				/* Clear any possible endpoint stalls */
-				usb_clear_halt(upsdev, 0x81);
-				/* continue; */ /* FIXME: seems a break would be better! */
-				break;
+				nutusb_comm_fail("get_answer: libusb error result = %d", res);
+				return -1;
 			}
 
 			/* this seems to occur on XSlot USB card */
@@ -306,6 +305,8 @@ int command_read_sequence(unsigned char command, unsigned char *data)
 		nutusb_comm_fail("Error executing command");
 		dstate_datastale();
 		return -1;
+	} else {
+		nutusb_comm_good();
 	}
 
 	return bytes_read;
@@ -506,6 +507,16 @@ void nutusb_comm_fail(const char *fmt, ...)
 	if (exit_flag != 0)
 		return; /* ignored, since we're about to exit anyway */
 
+
+	if (comm_failure_state % 2 == 0) {
+		usb_clear_halt(upsdev, 0x81);
+	} else {
+		/* Try reconnection */
+		upsdebugx(1, "Got to reconnect!\n");
+		upsdrv_reconnect();
+	}
+
+	comm_failure_state++;
 	comm_failures++;
 
 	if ((comm_failures == USB_ERR_LIMIT) ||
@@ -518,9 +529,6 @@ void nutusb_comm_fail(const char *fmt, ...)
 	/* once it's past the limit, only log once every USB_ERR_LIMIT calls */
 	if ((comm_failures > USB_ERR_LIMIT) &&
 		((comm_failures % USB_ERR_LIMIT) != 0)) {
-		/* Try reconnection */
-		upsdebugx(1, "Got to reconnect!\n");
-		upsdrv_reconnect();
 		return;
 	}
 
@@ -544,10 +552,10 @@ void nutusb_comm_fail(const char *fmt, ...)
 
 void nutusb_comm_good(void)
 {
-	if (comm_failures == 0)
+	if (comm_failure_state == 0)
 		return;
 
 	upslogx(LOG_NOTICE, "Communications with UPS re-established");
-	comm_failures = 0;
+	comm_failure_state = 0;
 }
 
