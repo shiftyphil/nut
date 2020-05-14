@@ -168,7 +168,7 @@ int get_answer(unsigned char *data, unsigned char command)
 		/* Get (more) data if needed */
 		if (need_data > bytes_read) {
 			res = usb_interrupt_read(upsdev, 0x81, (char *) buf + bytes_read,
-				128,
+				PW_CMD_BUFSIZE - bytes_read,
 				(XCP_USB_TIMEOUT - ellapsed_time));
 
 			/* Update time */
@@ -265,6 +265,11 @@ int get_answer(unsigned char *data, unsigned char command)
 		else {
 			seq_num++;
 			upsdebugx(2, "get_answer: next sequence is %d", seq_num);
+		}
+
+		if (end_length + length > PW_ANSWER_MAX_SIZE) {
+			nutusb_comm_fail("get_answer: answer buffer too small");
+			return -1;
 		}
 
 		/* copy the current valid XCP frame back */
